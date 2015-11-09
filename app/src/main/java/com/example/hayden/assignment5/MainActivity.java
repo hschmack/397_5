@@ -2,7 +2,9 @@ package com.example.hayden.assignment5;
 
 import android.app.Activity;
 import android.bluetooth.BluetoothSocket;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -16,7 +18,11 @@ import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.ListView;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -50,6 +56,15 @@ public class MainActivity extends Activity {
     public static final int STATE_CONNECTING = 2; // now initiating an outgoing connection
     public static final int STATE_CONNECTED = 3;  // now connected to a remote device
 
+    private File file;
+    private Uri tmpPath;
+    public BufferedWriter bufferedWriter;
+    ArrayAdapter<String> mSensorDataArrayAdapter;
+
+    // Layout Views
+    private ListView mSensorDataView;
+    private Button mStartButton;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -58,8 +73,47 @@ public class MainActivity extends Activity {
 
         // Get local Bluetooth adapter
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
-    }
 
+        //csv stuff
+        File dcim = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM);
+        File myFile = new File(dcim, "sensorData.csv");
+
+        if(!myFile.exists()) {
+            file = new File(dcim, "sensorData.csv");
+
+            try {
+                bufferedWriter = new BufferedWriter(new FileWriter(file));
+                String headings ="TimeStamp,Sensor1,Sensor2,Sensor3\n";
+                bufferedWriter.write(headings);
+                bufferedWriter.flush();
+
+            } catch (IOException e){
+                Log.d("BUILDING", "CANT CREATE BUFFERED OR FILE READER");
+            }
+        } else {
+            //already exists
+            try {
+                bufferedWriter = new BufferedWriter(new FileWriter(myFile, true));
+            } catch (IOException e){
+                Log.d("BUILDING", "CANT CREATE BUFFERED OR FILE READER");
+            }
+        }
+
+        //Layout
+        mSensorDataView = (ListView) findViewById(R.id.in);
+        mStartButton = (Button) findViewById(R.id.button_start);
+
+        setup();
+
+        mStartButton.setVisibility(View.INVISIBLE);
+
+        mStartButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startEdison();
+            }
+        });
+    }
 
     @Override
     public void onStart() {
@@ -117,12 +171,6 @@ public class MainActivity extends Activity {
             startActivity(discoverableIntent);
         }
     }
-
-    public void getPairedList(View v) {
-        Set<BluetoothDevice> pairedDevicess = mBluetoothAdapter.getBondedDevices();
-
-    }
-
 
     public synchronized void setState(int state) {
         mState = state;
@@ -265,6 +313,7 @@ public class MainActivity extends Activity {
             byte[] buffer = new byte[1024];
             int bytes;
 
+            mStartButton.setVisibility(View.VISIBLE);
             // Keep listening to the InputSteam while connected
             while(true) {
                 try {
@@ -281,8 +330,6 @@ public class MainActivity extends Activity {
         }
 
         public void write(byte[] buffer){
-            String startCommand = "START";
-            byte[] cmdBuffer = startCommand.getBytes();
 
             try{
                 connectedOutputStream.write(buffer);
@@ -299,8 +346,52 @@ public class MainActivity extends Activity {
             }
         }
     }
+
     public void writeToCSV(int bytes, byte[] buffer) {
         String sensorInfo = new String(buffer, 0, bytes);
-        
+        Long tsLong = System.currentTimeMillis()/1000;
+        String ts = tsLong.toString();
+
+        sensorInfo = ts + ',' + sensorInfo+'\n';
+
+        mSensorDataArrayAdapter.add(sensorInfo);
+        try {
+            bufferedWriter.write(sensorInfo);
+            bufferedWriter.flush();
+        } catch (IOException e){
+            Log.e("BUILDING", "error writing to csv", e);
+        }
+
     }
+
+    public void startEdison(){
+        Log.d("BUILDING", "sending START cmd to connected device");
+        String startCommand = "START";
+        byte[] cmdBuffer = startCommand.getBytes();
+
+        mThreadConnected.write(cmdBuffer);
+    }
+
+    public void setup(){
+        Log.d("BUILDING", "entering setup");
+        //initialize the array adapter that will display recieved sensor data
+        mSensorDataArrayAdapter = new ArrayAdapter<String>(this, R.layout.message);
+        mSensorDataView.setAdapter(mSensorDataArrayAdapter);
+
+        connectToEdison();
+
+    }
+
+    public void connectToEdison(){
+        Set<BluetoothDevice> pairedDevices = mBluetoothAdapter.getBondedDevices();
+        for (BluetoothDevice device: pairedDevices){
+            Log.d("BUILDING", "Device name: "+device.getName());
+            if(device.getName().equals("hayden")){
+                Log.d("BUILDING", "FOUND EDISON");
+                connect(device);
+                break;
+            }
+        }
+    }
+
 }

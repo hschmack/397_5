@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">Assignment5</string>
 
-    <string name="hello_world">Hello world!</string>
+    <string name="hello_world">Intel Edison Sensor Data Collection</string>
     <string name="action_settings">Settings</string>
 
     <!-- Options Menu -->
