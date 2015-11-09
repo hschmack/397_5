@@ -65,6 +65,26 @@ public class MainActivity extends Activity {
     private ListView mSensorDataView;
     private Button mStartButton;
 
+    //handler constants
+    public static final int MAKE_VISIBLE = 0;
+    public static final int DATA_RETRIEVED = 1;
+
+    //handler to update UI
+    final Handler mHandler = new Handler() {
+        public void handleMessage(Message msg) {
+            Log.d("BUILDING", "MSG.what="+msg.what);
+            switch(msg.what) {
+                case MAKE_VISIBLE:
+                    Log.d("BUILDING", "handler making visible");
+                    mStartButton.setVisibility(View.VISIBLE);
+                    break;
+                case DATA_RETRIEVED:
+                    mSensorDataArrayAdapter.add((String)msg.obj);
+                    writeToCSV((String)msg.obj);
+                    break;
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -82,20 +102,20 @@ public class MainActivity extends Activity {
             file = new File(dcim, "sensorData.csv");
 
             try {
-                bufferedWriter = new BufferedWriter(new FileWriter(file));
+                bufferedWriter = new BufferedWriter(new FileWriter(myFile));
                 String headings ="TimeStamp,Sensor1,Sensor2,Sensor3\n";
                 bufferedWriter.write(headings);
                 bufferedWriter.flush();
 
             } catch (IOException e){
-                Log.d("BUILDING", "CANT CREATE BUFFERED OR FILE READER");
+                Log.e("BUILDING", "CANT CREATE BUFFERED OR FILE READER, file doesn't exist", e);
             }
         } else {
             //already exists
             try {
                 bufferedWriter = new BufferedWriter(new FileWriter(myFile, true));
             } catch (IOException e){
-                Log.d("BUILDING", "CANT CREATE BUFFERED OR FILE READER");
+                Log.d("BUILDING", "CANT CREATE BUFFERED OR FILE READER, file exists");
             }
         }
 
@@ -212,13 +232,14 @@ public class MainActivity extends Activity {
      * @param device The BluetoothDevice that has been connected
      */
     public synchronized void connected(BluetoothSocket socket, BluetoothDevice device) {
-        Log.d("BUILDING", "connected");
+        Log.d("BUILDING", "in connected");
 
         // Cancel the thread that completed the connection
         if (mConnectThread != null) {
             mConnectThread.cancel();
             mConnectThread = null;
         }
+        Log.d("BUILDING", "cancelled mConnectThread");
 
         // Cancel any thread currently running a connection
         if (mThreadConnected != null) {
@@ -227,6 +248,7 @@ public class MainActivity extends Activity {
         }
 
 
+        Log.d("BUILDING", "starting new ThreadConnected");
         // Start the thread to manage the connection and perform transmissions
         mThreadConnected = new ThreadConnected(socket);
         mThreadConnected.start();
@@ -310,17 +332,25 @@ public class MainActivity extends Activity {
 
         @Override
         public void run(){
+            Log.d("BUILDING", "ThreadConnected start");
             byte[] buffer = new byte[1024];
             int bytes;
 
-            mStartButton.setVisibility(View.VISIBLE);
+            Log.d("BUILDING", "making visible");
+            Message setMsg = mHandler.obtainMessage(MAKE_VISIBLE);
+            mHandler.sendMessage(setMsg);
             // Keep listening to the InputSteam while connected
             while(true) {
                 try {
                     //Read from the InputStream
                     bytes = connectedInputStream.read(buffer);
 
-                    writeToCSV(bytes, buffer);
+                    if(bytes > 0) {
+                        String sensorInfo = new String(buffer, 0, bytes);
+                        Message msg = mHandler.obtainMessage(DATA_RETRIEVED, sensorInfo);
+                        mHandler.sendMessage(msg);
+
+                    }
                 } catch (IOException e) {
                     Log.e("BUILDING", "Disconnected", e);
                     //try and restart maybe eventually
@@ -347,20 +377,20 @@ public class MainActivity extends Activity {
         }
     }
 
-    public void writeToCSV(int bytes, byte[] buffer) {
-        String sensorInfo = new String(buffer, 0, bytes);
+    public void writeToCSV(String sensorInfo) {
+        Log.d("BUILDING", "inside writeToCsv");
         Long tsLong = System.currentTimeMillis()/1000;
         String ts = tsLong.toString();
 
-        sensorInfo = ts + ',' + sensorInfo+'\n';
+        String writeTo = ts + ',' + sensorInfo + '\n';
+        Log.d("BUILDING", "Sensor data written is: " + writeTo);
 
-        mSensorDataArrayAdapter.add(sensorInfo);
-        try {
-            bufferedWriter.write(sensorInfo);
-            bufferedWriter.flush();
-        } catch (IOException e){
-            Log.e("BUILDING", "error writing to csv", e);
-        }
+//        try {
+//            bufferedWriter.write(sensorInfo);
+//            bufferedWriter.flush();
+//        } catch (IOException e){
+//            Log.e("BUILDING", "error writing to csv", e);
+//        }
 
     }
 
